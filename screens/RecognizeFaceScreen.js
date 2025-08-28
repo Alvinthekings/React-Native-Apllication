@@ -188,8 +188,7 @@ const violationTypes = [
     }
   };
 
-  // Improved handleSubmit function
-const handleSubmit = async () => {
+  const handleSubmit = async () => {
   if (!violation.student_id) {
     Alert.alert('Error', 'No student selected');
     return;
@@ -199,57 +198,61 @@ const handleSubmit = async () => {
     return;
   }
 
+  // Check for duplicate violation on the same day
   try {
-    const formattedDate = new Date(
-      violation.violation_date.getTime() - (violation.violation_date.getTimezoneOffset() * 60000)
-    ).toISOString().split('T')[0];
-
+    const formattedDate = violation.violation_date.toISOString().split('T')[0];
     console.log('Checking duplicate for:', {
       student_id: violation.student_id,
       violation_type: violation.violation_type,
       date: formattedDate,
     });
 
-    // ✅ Only check for duplicates on the same day
+    // Add a timestamp to see when this is called
+    console.log('Duplicate check called at:', new Date().toISOString());
+    
     const isDuplicate = await checkDuplicateViolation({
       student_id: violation.student_id,
       violation_type: violation.violation_type,
       date: formattedDate,
     });
 
+    console.log('Duplicate check result:', isDuplicate, 'Type:', typeof isDuplicate);
+
     if (isDuplicate) {
       Alert.alert(
-        'Duplicate Violation',
-        'This student already has this violation recorded today. Do you want to proceed anyway?',
+        'Duplicate Violation', 
+        'This student already has a similar violation recorded today. Do you want to proceed anyway?',
         [
           { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Proceed',
-            onPress: () => submitViolationData(formattedDate, true), // pass override flag
-          },
+          { 
+            text: 'Proceed', 
+            onPress: () => submitViolationData()
+          }
         ]
       );
     } else {
-      submitViolationData(formattedDate, false);
+      submitViolationData();
     }
   } catch (error) {
     console.log("Error checking duplicate:", error);
-    // Proceed with submission if duplicate check fails
-    const formattedDate = new Date(
-      violation.violation_date.getTime() - (violation.violation_date.getTimezoneOffset() * 60000)
-    ).toISOString().split('T')[0];
-    submitViolationData(formattedDate, false);
+    // Let's see the actual error response
+    if (error.response) {
+      console.log("Error response data:", error.response.data);
+      console.log("Error response status:", error.response.status);
+    }
+    submitViolationData();
   }
 };
 
-// Modified submitViolationData to accept date + override flag
-const submitViolationData = async (formattedDate, allowDuplicate = false) => {
+ const submitViolationData = async () => {
   setIsSubmitting(true);
   try {
+    const formattedDate = new Date(violation.violation_date.getTime() - 
+      (violation.violation_date.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    
     const response = await submitViolation({
       ...violation,
       date: formattedDate,
-      allowDuplicate, // ✅ let backend know if user chose to override
     });
 
     if (response.success) {
@@ -259,18 +262,18 @@ const submitViolationData = async (formattedDate, allowDuplicate = false) => {
         student_name: `${recognizedStudent?.first_name} ${recognizedStudent?.last_name}`,
       });
       setStep("submitted");
-    } else if (response.is_duplicate && !allowDuplicate) {
+    } else if (response.is_duplicate) {
       Alert.alert(
         'Duplicate Violation',
-        'This student already has this violation recorded today. You cannot submit it again for the same date.',
+        'This violation already exists in the system. You cannot submit it again.',
         [{ text: 'OK', style: 'cancel' }]
       );
-    } else if (!response.success) {
+    } else {
       Alert.alert('Error', response.message || 'Failed to submit violation');
     }
   } catch (error) {
     console.log("Submit violation error:", error);
-    if (error.response?.status === 409 && !allowDuplicate) {
+    if (error.response?.status === 409) {
       Alert.alert(
         'Duplicate Violation',
         'Duplicate violation found for this student on the same day.',
@@ -283,7 +286,6 @@ const submitViolationData = async (formattedDate, allowDuplicate = false) => {
     setIsSubmitting(false);
   }
 };
-
   const handleEditViolation = () => {
     setStep("submit");
   };
